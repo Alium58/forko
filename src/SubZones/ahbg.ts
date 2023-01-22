@@ -1,8 +1,9 @@
 import { lastChoice, print, visitUrl } from "kolmafia";
 import { $location } from "libram";
-import { AdventuringManager, PrimaryGoal, usualDropItems } from "./adventure";
-import { adventureMacroAuto, Macro } from "./combat";
+import { AdventuringManager, PrimaryGoal, usualDropItems } from "../adventure";
+import { adventureMacroAuto, Macro } from "../combat";
 import {
+  everyTurnFunction,
   extractInt,
   getImageAhbg,
   getPropertyInt,
@@ -13,8 +14,8 @@ import {
   setPropertyInt,
   stopAt,
   wrapMain,
-} from "./lib";
-import { expectedTurns, moodBaseline, moodMinusCombat } from "./mood";
+} from "../lib";
+import { expectedTurns, moodBaseline, moodMinusCombat } from "../mood";
 
 class AHBGState {
   image = 0;
@@ -48,6 +49,7 @@ export function doAhbg(stopTurncount: number) {
   }
 
   while (state.image < 10 && !mustStop(stopTurncount)) {
+    everyTurnFunction();
     let primaryGoal = PrimaryGoal.MINUS_COMBAT;
     let auxiliaryGoals: string[] = [];
     if (state.watched + state.dances < 5 * state.flimflams && state.dances < 21) {

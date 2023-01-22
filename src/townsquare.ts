@@ -2,9 +2,12 @@ import {
   abort,
   ceil,
   cliExecute,
+  Effect,
   haveEffect,
   inebrietyLimit,
   myBuffedstat,
+  myClass,
+  myEffects,
   myInebriety,
   numericModifier,
   print,
@@ -12,12 +15,14 @@ import {
   toFloat,
   visitUrl,
 } from "kolmafia";
-import { $effect, $item, $location, $skill, $stat } from "libram";
+import { $class, $effect, $item, $location, $skill, $stat, have } from "libram";
 import { AdventuringManager, PrimaryGoal, usualDropItems } from "./adventure";
 import { adventureMacro, Macro } from "./combat";
 import {
+  everyTurnFunction,
   extractInt,
   getImage,
+  getImageTownsquare,
   memoizeTurncount,
   mustStop,
   setChoice,
@@ -25,7 +30,7 @@ import {
   turboMode,
   wrapMain,
 } from "./lib";
-import { ensureEffect, expectedTurns, moodBaseline } from "./mood";
+import { ensureEffect, expectedTurns, moodBaseline, shrug } from "./mood";
 
 enum PartType {
   HOT,
@@ -114,18 +119,25 @@ const pldAccessible = memoizeTurncount(() => {
 
 function getParts(part: MonsterPart, desiredParts: number, stopTurncount: number) {
   const current = currentParts().get(part) as number;
-  if (current >= desiredParts || pldAccessible() || mustStop(stopTurncount)) return;
+  if (current >= desiredParts || mustStop(stopTurncount)) return;
+
+  print(`Getting ${part.name} in TownSquare`, "blue");
 
   // This is up here so we have the right effects on for damage prediction.
   const expected = expectedTurns(stopTurncount);
   moodBaseline(expected);
-  ensureEffect($effect`Ur-Kel's Aria of Annoyance`, current - desiredParts);
+  // remove ML to make it easier to get parts
+  for (const effectName of Object.keys(myEffects())) {
+    const effect = Effect.get(effectName);
+    if (numericModifier(effect, "Monster Level") > 0) shrug(effect as Effect);
+  }
 
-  while (
-    (currentParts().get(part) as number) < desiredParts &&
-    !pldAccessible() &&
-    !mustStop(stopTurncount)
-  ) {
+  while ((currentParts().get(part) as number) < desiredParts && !mustStop(stopTurncount)) {
+    // get single turn of buffs
+    moodBaseline(15);
+    everyTurnFunction();
+    if (myClass() !== $class`Grey Goo` && myBuffedstat($stat`Mysticality`) < 400)
+      cliExecute(`gain 400 mys`);
     const manager = new AdventuringManager(
       $location`Hobopolis Town Square`,
       PrimaryGoal.NONE,
@@ -134,30 +146,43 @@ function getParts(part: MonsterPart, desiredParts: number, stopTurncount: number
     );
     manager.preAdventure();
 
-    if ([PartType.COLD, PartType.STENCH, PartType.SPOOKY, PartType.SLEAZE].includes(part.type)) {
+    if (
+      [PartType.COLD, PartType.STENCH, PartType.SPOOKY, PartType.SLEAZE, PartType.HOT].includes(
+        part.type
+      )
+    ) {
       const predictedDamage =
         (32 + 0.5 * myBuffedstat($stat`Mysticality`)) *
         (1 + numericModifier("spell damage percent") / 100);
-      if (predictedDamage < 505) {
-        abort(`Predicted spell damage ${round(predictedDamage)} is not enough to overkill hobos.`);
+      if (predictedDamage < 505 && myClass() !== $class`Grey Goo`) {
+        abort(
+          `Predicted spell damage ${round(
+            predictedDamage
+          )} is not enough to overkill hobos and not Grey You.`
+        );
       }
-      if (haveEffect(part.intrinsic) === 0) {
+      if (haveEffect(part.intrinsic) === 0 && have($skill`Flavour of Magic`)) {
         cliExecute(part.intrinsic.default);
       }
       Macro.stasis()
-        .if_("monstername sausage goblin", Macro.skill($skill`Saucegeyser`).repeat())
-        .skill($skill`Stuffed Mortar Shell`)
+        .externalIf(
+          myClass() === $class`Grey Goo`,
+          Macro.if_(
+            "monstername sausage goblin",
+            Macro.trySkill($skill`Double Nanovision`).repeat()
+          )
+            .attack()
+            .repeat()
+        ) // rely on space tourist phaser
+        .if_("monstername sausage goblin", Macro.trySkill($skill`Saucegeyser`).repeat())
+        .trySkill($skill`Stuffed Mortar Shell`)
         .externalIf(!turboMode(), Macro.skill($skill`Cannelloni Cannon`).repeat())
         .item($item`seal tooth`)
         .setAutoAttack();
-    } else if (part.type === PartType.HOT) {
-      Macro.stasis()
-        .skill($skill`Saucegeyser`)
-        .repeat()
-        .setAutoAttack();
     } else if (part.type === PartType.PHYSICAL) {
       Macro.stasis()
-        .skill($skill`Lunging Thrust-Smack`)
+        .trySkill($skill`Double Nanovision`)
+        .trySkill($skill`Lunging Thrust-Smack`)
         .repeat()
         .setAutoAttack();
     }
@@ -166,9 +191,12 @@ function getParts(part: MonsterPart, desiredParts: number, stopTurncount: number
   }
 }
 
-export function doTownsquare(stopTurncount: number) {
-  if (pldAccessible()) {
-    print("Finished Town Square. Continuing...");
+export function doTownsquare(stopTurncount: number, pass: number) {
+  if (pldAccessible() && pass === 1) {
+    print("Finished Town Square to PLD. Continuing...");
+    return;
+  } else if (getImageTownsquare() === 25) {
+    print("Finished Town Square to Hodgman. Continuing...");
     return;
   } else if (mustStop(stopTurncount)) {
     print("Out of adventures.");
@@ -184,9 +212,10 @@ export function doTownsquare(stopTurncount: number) {
   visitUrl("clan_hobopolis.php?preaction=simulacrum&place=3&qty=1&makeall=1");
 
   const image = getImage($location`Hobopolis Town Square`);
-  if (image < 11 && myInebriety() <= inebrietyLimit()) {
+  const goalimage = pass === 1 ? 11 : 25;
+  if (image < goalimage && myInebriety() <= inebrietyLimit()) {
     // Assume we're at the end of our current image and estimate. This will be conservative.
-    const imagesRemaining = 11 - image;
+    const imagesRemaining = goalimage - image;
     let hobosRemaining = (imagesRemaining - 1) * 100;
     // Make a plan: how many total scarehobos do we need to make to kill that many?
     // Start with the part with the fewest (should be 0).
@@ -218,9 +247,9 @@ export function doTownsquare(stopTurncount: number) {
       }
     }
 
-    for (const partPlan of plan) {
-      print(`PLAN: For part ${partPlan.type.name}, get ${partPlan.count} more parts.`);
-    }
+    // for (const partPlan of plan) {
+    //    print(`PLAN: For part ${partPlan.type.name}, get ${partPlan.count} more parts.`);
+    // }
     plan.sort((x, y) => x.type.type - y.type.type);
     for (const partPlan of plan) {
       print(`PLAN: For part ${partPlan.type.name}, get ${partPlan.count} more parts.`);
@@ -233,7 +262,8 @@ export function doTownsquare(stopTurncount: number) {
   }
   print("Close to goal; using 1-by-1 strategy.");
 
-  while (!pldAccessible() && !mustStop(stopTurncount)) {
+  while (getImageTownsquare() < goalimage && !mustStop(stopTurncount)) {
+    everyTurnFunction();
     if (myInebriety() <= inebrietyLimit()) {
       for (const part of allParts.values()) {
         getParts(part, 1, stopTurncount);
@@ -246,13 +276,13 @@ export function doTownsquare(stopTurncount: number) {
     }
     currentParts.forceUpdate();
   }
-  if (pldAccessible()) {
-    print("PLD accessible. Done with town square.");
+  if (getImageTownsquare() < goalimage) {
+    print("Done with town square.");
   } else if (mustStop(stopTurncount)) {
     print("Out of adventures.");
   }
 }
 
 export function main(args: string) {
-  wrapMain(args, () => doTownsquare(stopAt(args)));
+  wrapMain(args, () => doTownsquare(stopAt(args), 2));
 }

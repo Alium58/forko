@@ -1,15 +1,19 @@
 import {
   availableAmount,
+  canInteract,
   cliExecute,
   eat,
+  Effect,
   effectModifier,
   getCampground,
   getClanName,
   getProperty,
+  getWorkshed,
   haveEffect,
   haveSkill,
   hpCost,
   inebrietyLimit,
+  Item,
   itemAmount,
   mallPrice,
   maximize,
@@ -28,7 +32,9 @@ import {
   print,
   putStash,
   restoreHp,
+  restoreMp,
   retrieveItem,
+  Skill,
   stashAmount,
   takeStash,
   toEffect,
@@ -181,10 +187,14 @@ export function tryEnsureSkill(skill: Skill, turns = 1) {
   const effect = toEffect(skill);
   const initialTurns = haveEffect(effect);
 
+  // print(`Ensuring Skill ${skill} (have? ${haveSkill(skill)}) for ${turns} turns`);
+  //  print(`Ensuring Effect ${effect} with ${initialTurns} intial turns`);
   if (haveSkill(skill) && effect !== $effect`none` && initialTurns < turns) {
+    // print("step 1");
     let oldRemainingCasts = -1;
     let remainingCasts = Math.ceil((turns - haveEffect(effect)) / turnsPerCast(skill));
     while (remainingCasts > 0 && oldRemainingCasts !== remainingCasts) {
+      // print("step 2");
       let maxCasts;
       if (hpCost(skill) > 0) {
         restoreHp(myMaxhp());
@@ -194,6 +204,7 @@ export function tryEnsureSkill(skill: Skill, turns = 1) {
           tryUsePyec();
         }
         trySausageMp();
+        restoreMp(myMaxmp());
         maxCasts = myMp() / mpCost(skill);
       }
       const casts = clamp(remainingCasts, 0, Math.min(100, maxCasts));
@@ -215,6 +226,7 @@ export function tryEnsurePotion(
   maxPricePerTurn = 100,
   actualItem: Item | null = null
 ) {
+  if (itemAmount(item) === 0 && !canInteract()) return false;
   // Actual item is for when we might buy the ingredients rather than the potion itself.
   turns = Math.round(clamp(turns, 0, myAdventures() * 1.1 + 5));
   const potion = actualItem || item;
@@ -266,7 +278,7 @@ export function tryEnsureTriviaMaster(turns = 1) {
 }
 
 export function drive(effect: Effect, maxTurns: number) {
-  if (getCampground()["Asdon Martin keyfob"] !== undefined) {
+  if (getWorkshed() === $item`Asdon Martin keyfob`) {
     const count = Math.ceil((maxTurns - haveEffect(effect)) / 30);
     fillAsdonMartinTo(count * 37);
     for (let i = 0; i < count; i++)
@@ -317,6 +329,8 @@ export function moodMinusCombat(
   drive($effect`Driving Stealthily`, maxTurnsMinusCombat);
   tryEnsureSong($skill`The Sonata of Sneakiness`, maxTurnsMinusCombat);
   tryEnsureSkill($skill`Smooth Movement`, maxTurnsMinusCombat);
+  tryEnsureSkill($skill`Phase Shift`, maxTurnsMinusCombat);
+  tryEnsureSkill($skill`Photonic Shroud`, maxTurnsMinusCombat);
   tryEnsurePotion(
     cheapest(...$items`snow cleats, snow berries`),
     maxTurnsMinusCombat,
@@ -371,6 +385,7 @@ export function moodPlusCombat(
   drive($effect`Driving Obnoxiously`, maxTurnsPlusCombat);
   tryEnsureSong($skill`Carlweather's Cantata of Confrontation`, maxTurnsPlusCombat);
   tryEnsureSkill($skill`Musk of the Moose`, maxTurnsPlusCombat);
+  tryEnsureSkill($skill`Piezoelectric Honk`, maxTurnsPlusCombat);
   tryEnsurePotion(
     cheapest(...$items`reodorant, handful of pine needles`),
     maxTurnsPlusCombat,
@@ -389,6 +404,7 @@ export function moodPlusCombat(
   if (getPropertyBoolean("horseryAvailable") && getProperty("_horsery") === "dark horse") {
     cliExecute("horsery normal");
   }
+  cliExecute(`gain 25 combat ${maxTurnsPlusCombat}`);
 }
 export function moodAddItem() {
   tryEnsureSong($skill`Fat Leon's Phat Loot Lyric`);

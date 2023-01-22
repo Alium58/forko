@@ -11,6 +11,7 @@ import { $item, $location } from "libram";
 import { AdventuringManager, PrimaryGoal, usualDropItems } from "./adventure";
 import { adventureRunOrStasis } from "./combat";
 import {
+  everyTurnFunction,
   extractInt,
   getChoice,
   memoizeTurncount,
@@ -65,6 +66,7 @@ export function doSewers(stopTurncount: number) {
     setAutoAttack(0);
 
     while (doContinue(stopTurncount)) {
+      everyTurnFunction();
       if (state.valves >= 20) setChoice(197, 1); // Take tunnel and open grates.
       if (state.grates >= 20) setChoice(198, 1); // Take tunnel and open valves.
       if (state.grates + state.valves >= 32) setChoice(199, 1); // Take tunnel on useless ladder NC.

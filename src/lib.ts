@@ -2,14 +2,19 @@ import {
   abort,
   availableAmount,
   buy,
+  canInteract,
   cliExecute,
   closetAmount,
   eat,
+  Familiar,
   familiarWeight,
   formatDateTime,
   getProperty,
+  getWorkshed,
   haveEffect,
+  Item,
   itemAmount,
+  Location,
   logprint,
   mallPrice,
   myAdventures,
@@ -22,7 +27,9 @@ import {
   myTurncount,
   print,
   printHtml,
+  propertyExists,
   retrieveItem,
+  runChoice,
   setAutoAttack,
   setProperty,
   shopAmount,
@@ -30,13 +37,27 @@ import {
   takeShop,
   timeToString,
   todayToString,
+  totalTurnsPlayed,
   urlEncode,
+  use,
   useSkill,
   visitUrl,
   wait,
   weightAdjustment,
 } from "kolmafia";
-import { $class, $effect, $item, $items, $location, $skill, $thrall, get } from "libram";
+import {
+  $class,
+  $effect,
+  $item,
+  $items,
+  $location,
+  $skill,
+  $thrall,
+  AutumnAton,
+  get,
+  have,
+  SourceTerminal,
+} from "libram";
 import { getSewersState, throughSewers } from "./sewers";
 
 export function clamp(n: number, min: number, max: number) {
@@ -49,11 +70,11 @@ export function getPropertyString(name: string, def: string | null = null): stri
 }
 
 export function getPropertyInt(name: string, default_: number | null = null): number {
-  const str = getProperty(name);
-  if (str === "") {
+  if (!propertyExists(name)) {
     if (default_ === null) throw `Unknown property ${name}.`;
     else return default_;
   }
+  const str = getProperty(name);
   return parseInt(str, 10);
 }
 
@@ -72,6 +93,18 @@ export function setPropertyInt(name: string, value: number) {
 
 export function setChoice(adv: number, choice: number) {
   setProperty(`choiceAdventure${adv}`, `${choice}`);
+}
+
+export function setJuneCleaverChoices() {
+  setChoice(1467, 3);
+  setChoice(1468, 2);
+  setChoice(1469, 3);
+  setChoice(1470, 2);
+  setChoice(1471, 1);
+  setChoice(1472, 1);
+  setChoice(1473, 1);
+  setChoice(1474, 2);
+  setChoice(1475, 1);
 }
 
 export function getChoice(adv: number) {
@@ -161,7 +194,7 @@ export function turboMode() {
 }
 
 export function ensureJingle() {
-  if (haveEffect($effect`Jingle Jangle Jingle`) === 0) {
+  if (haveEffect($effect`Jingle Jangle Jingle`) === 0 && canInteract()) {
     cliExecute(`csend to buffy || ${Math.round(myAdventures() * 1.1 + 200)} jingle`);
     for (let i = 0; i < 5; i++) {
       wait(3);
@@ -270,13 +303,15 @@ export function wrapMain(args = "", action: () => void) {
     if (myClass() === $class`Pastamancer` && myThrall() !== $thrall`Elbow Macaroni`) {
       useSkill(1, $skill`Bind Undead Elbow Macaroni`);
     }
+    setJuneCleaverChoices();
     ensureJingle();
     cliExecute("counters nowarn Fortune Cookie");
     cliExecute("mood apathetic");
     cliExecute("ccs forko");
     if (
-      get("sourceTerminalEducate1") !== "digitize.edu" ||
-      get("sourceTerminalEducate2") !== "extract.edu"
+      SourceTerminal.have() &&
+      (get("sourceTerminalEducate1") !== "digitize.edu" ||
+        get("sourceTerminalEducate2") !== "extract.edu")
     ) {
       cliExecute("terminal educate digitize; terminal educate extract");
     }
@@ -291,7 +326,7 @@ export function wrapMain(args = "", action: () => void) {
     setProperty("minehobo_lastStats", "");
     setProperty("minehobo_lastFamiliar", "");
     unclosetNickels();
-    if (throughSewers()) recordInstanceState();
+    //if (throughSewers()) recordInstanceState();
   }
 }
 
@@ -314,4 +349,59 @@ export function printLines(...lines: string[]) {
     logprint(line);
   }
   printHtml(lines.map((line) => line.replace("<", "&lt;")).join("\n"));
+}
+
+export function everyTurnFunction() {
+  if (getWorkshed() === $item`cold medicine cabinet`) {
+    // get pill if available
+    if (get("_coldMedicineConsults") < 5 && get("_nextColdMedicineConsult") <= totalTurnsPlayed()) {
+      visitUrl("campground.php?action=workshed");
+      runChoice(5);
+    }
+    // switch to train set if copmleted consults and can swap workshed
+    else if (get("_coldMedicineConsults") >= 5 && !get("_workshedItemUsed"))
+      use($item`Model Train Set`);
+  }
+  if (have($item`autumn-aton`)) {
+    // Refresh upgrades
+    AutumnAton.upgrade();
+
+    const upgrades = AutumnAton.currentUpgrades();
+    const zones = [];
+
+    if (!upgrades.includes("leftarm1")) {
+      zones.push($location`The Haunted Pantry`);
+    }
+
+    if (!upgrades.includes("leftleg1")) {
+      zones.push(
+        $location`Guano Junction`,
+        $location`The Batrat and Ratbat Burrow`,
+        $location`The Beanbat Chamber`,
+        $location`Noob Cave`
+      );
+    }
+
+    if (!upgrades.includes("rightleg1")) {
+      zones.push(
+        $location`The Haunted Library`,
+        $location`The Neverending Party`,
+        $location`The Haunted Kitchen`
+      );
+    }
+
+    if (!upgrades.includes("rightarm1")) {
+      zones.push(
+        $location`The Smut Orc Logging Camp`,
+        $location`Twin Peak`,
+        $location`The Goatlet`,
+        $location`The Overgrown Lot`
+      );
+    }
+
+    zones.push($location`The Toxic Teacups`, $location`The Sleazy Back Alley`);
+
+    const result = AutumnAton.sendTo(zones);
+    if (result) print(`Autumnaton sent to ${result}`);
+  }
 }

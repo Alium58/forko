@@ -14,8 +14,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "kolmafia": "^1.0.3",
-    "libram": "^0.3.3"
+    "eslint-plugin-libram": "^0.2.26",
+    "grimoire-kolmafia": "^0.3.11",
+    "kolmafia": "^5.27092.0",
+    "libram": "^0.7.9",
+    "prettier": "^2.8.2"
   },
   "devDependencies": {
     "@babel/cli": "^7.12.8",

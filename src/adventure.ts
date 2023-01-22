@@ -1,4 +1,5 @@
 import {
+  $class,
   $effect,
   $familiar,
   $familiars,
@@ -8,27 +9,34 @@ import {
   $locations,
   $skill,
   get,
+  have,
+  uneffect,
 } from "libram";
 import {
   adv1,
   availableAmount,
   cliExecute,
   equippedAmount,
+  Familiar,
   getCampground,
   getCounters,
   getFuel,
   getProperty,
+  getWorkshed,
   haveEffect,
   haveFamiliar,
   haveSkill,
   inebrietyLimit,
+  Item,
   itemAmount,
+  Location,
   mallPrice,
   maximize,
   mpCost,
   myAdventures,
   myAscensions,
   myBasestat,
+  myClass,
   myFamiliar,
   myHp,
   myInebriety,
@@ -45,6 +53,8 @@ import {
   setLocation,
   setProperty,
   shopAmount,
+  Skill,
+  Stat,
   takeCloset,
   toInt,
   totalTurnsPlayed,
@@ -111,19 +121,15 @@ const freeRunSources: [string, number | boolean, Item | Skill][] = [
   ["_snokebombUsed", 3, $skill`Snokebomb`],
   ["_mafiaMiddleFingerRingUsed", true, $item`mafia middle finger ring`],
 ];
-const freeRunItems = $items`Louder Than Bomb, tattered scrap of paper, GOTO, green smoke bomb`;
+const freeRunItems = $items`Louder Than Bomb, divine champagne popper, tattered scrap of paper, GOTO, green smoke bomb`;
 let freeRunFamiliar: Familiar | null = null;
 for (const testFam of $familiars`Pair of Stomping Boots, Frumious Bandersnatch`) {
   if (haveFamiliar(testFam)) freeRunFamiliar = testFam;
 }
 
-export const usualDropItems = $items`lucky gold ring, Mr. Cheeng's spectacles, mafia thumb ring, pantogram pants`;
+export const usualDropItems = $items`lucky gold ring, Mr. Cheeng's spectacles, mafia thumb ring`; //, pantogram pants`;
 const turnOnlyItems = $items`mafia thumb ring`;
 const fightOnlyItems = $items`lucky gold ring, Mr. Cheeng's spectacles, mafia thumb ring`;
-
-export function inSemirareWindow() {
-  return getCounters("Semirare window end", 0, 40).includes("Semirare window end");
-}
 
 function averagePrice(items: Item[]) {
   return items.reduce((s, it) => s + mallPrice(it), 0) / items.length;
@@ -224,7 +230,6 @@ export function getKramcoWandererChance() {
 
 export class AdventuringManager {
   static lastFamiliar: Familiar | null = null;
-  static lastSemirareCheck = -1;
 
   location: Location;
   primaryGoal: PrimaryGoal;
@@ -256,6 +261,9 @@ export class AdventuringManager {
       ...$items`Pigsticker of Violence, porcelain porkpie, miniature crystal ball`,
     ];
 
+    // provide bonus to preferred, but not forced, gear
+    auxiliaryGoals = [...auxiliaryGoals, "+100 bonus June Cleaver, +100 bonus mafia thumb ring"];
+
     this.location = location;
     this.primaryGoal = primaryGoal;
     this.auxiliaryGoals = auxiliaryGoals;
@@ -266,7 +274,7 @@ export class AdventuringManager {
   limitedFreeRunsAvailable() {
     const additionalEquip: Item[] = [];
     if (
-      getCampground()["Asdon Martin keyfob"] !== undefined &&
+      getWorkshed() === $item`Asdon Martin keyfob` &&
       !getProperty("banishedMonsters").includes("Spring-Loaded Front Bumper")
     ) {
       if (getFuel() < 50) {
@@ -276,8 +284,9 @@ export class AdventuringManager {
     }
 
     for (const [pref, maxCount, itemOrSkill] of freeRunSources) {
-      const available =
+      let available =
         typeof maxCount === "number" ? getPropertyInt(pref) < maxCount : !getPropertyBoolean(pref);
+      if (!have(itemOrSkill)) available = false;
       print(`${itemOrSkill} available: ${available}`);
       if (available && has(itemOrSkill as Item | Skill)) {
         if (itemOrSkill instanceof Item) additionalEquip.push(itemOrSkill as Item);
@@ -318,6 +327,7 @@ export class AdventuringManager {
         getPropertyInt("_banderRunaways") < Math.floor(myFamiliarWeight() / 5) &&
         tryEnsureSong($skill`The Ode to Booze`)
       ) {
+        print(`Using fam for free run aways`, "red");
         this.primaryGoal = PrimaryGoal.NONE;
         this.auxiliaryGoals = ["familiar weight", ...this.auxiliaryGoals];
         this.forceEquip = exclude(this.forceEquip, fightOnlyItems);
@@ -338,7 +348,10 @@ export class AdventuringManager {
     const { limitedFreeRuns, additionalEquip } = this.limitedFreeRunsAvailable();
 
     this.familiarLocked = false;
-    this.willFreeRun = limitedFreeRuns || freeRunItems.some((it: Item) => itemAmount(it) > 0);
+    this.willFreeRun =
+      limitedFreeRuns ||
+      (freeRunItems.some((it: Item) => itemAmount(it) > 0) &&
+        getPropertyBoolean(`minehobo_useFreeRunItems`));
     if (this.willFreeRun)
       this.forceEquip = [...exclude(this.forceEquip, turnOnlyItems), ...additionalEquip];
   }
@@ -353,6 +366,7 @@ export class AdventuringManager {
       pickedFamiliar = $familiar`Stooper`;
     }
 
+    //print(`Free running when picking fam? ${this.willFreeRun}`, "red");
     if (pickedFamiliar === null && this.willFreeRun) {
       if (
         this.primaryGoal === PrimaryGoal.MINUS_COMBAT &&
@@ -372,7 +386,12 @@ export class AdventuringManager {
       // TODO: Could include LHM here, but difficult
     }
 
-    if (pickedFamiliar === null && myInebriety() <= inebrietyLimit() && lowMp) {
+    if (
+      pickedFamiliar === null &&
+      myInebriety() <= inebrietyLimit() &&
+      lowMp &&
+      have($familiar`Stocking Mimic`)
+    ) {
       pickedFamiliar = $familiar`Stocking Mimic`;
     }
 
@@ -382,16 +401,19 @@ export class AdventuringManager {
       const jellyProbability = [1, 0.5, 0.33, 0.25, 0.2, 0.05][
         clamp(getPropertyInt("_spaceJellyfishDrops"), 0, 5)
       ];
-      if (this.location === $location`The Purple Light District`) {
+      if (
+        this.location === $location`The Purple Light District` &&
+        have($familiar`Space Jellyfish`)
+      ) {
         const jellyfishValue = mallPrice($item`sleaze jelly`) * jellyProbability;
         familiarValue.push([$familiar`Space Jellyfish`, jellyfishValue]);
-      } else if (this.location === $location`The Heap`) {
+      } else if (this.location === $location`The Heap` && have($familiar`Space Jellyfish`)) {
         const jellyfishValue = mallPrice($item`stench jelly`) * jellyProbability;
         familiarValue.push([$familiar`Space Jellyfish`, jellyfishValue]);
       }
 
       if (!this.willFreeRun) {
-        if (!turbo && myInebriety() <= inebrietyLimit()) {
+        if (!turbo && myInebriety() <= inebrietyLimit() && $familiar`Stocking Mimic`) {
           const mimicWeight = myFamiliarWeight($familiar`Stocking Mimic`);
           const actionPercentage = 1 / 3 + (haveEffect($effect`Jingle Jangle Jingle`) ? 0.1 : 0);
           const mimicValue =
@@ -451,7 +473,9 @@ export class AdventuringManager {
   // Restore, maximize, pick familiar.
   preAdventure() {
     if (haveEffect($effect`Beaten Up`) > 0) {
-      throw "Got beaten up.";
+      if (["Poetic Justice", "Lost and Found"].includes(get("lastEncounter"))) {
+        uneffect($effect`Beaten Up`);
+      } else throw "Got beaten up.";
     }
 
     setLocation(this.location);
@@ -461,15 +485,21 @@ export class AdventuringManager {
       !this.willFreeRun &&
       myInebriety() <= inebrietyLimit()
     ) {
-      if (getPropertyInt("_chestXRayUsed") < 3) {
+      if (getPropertyInt("_chestXRayUsed") < 3 && have($item`Lil' Doctor™ bag`)) {
         this.forceEquip = [...exclude(this.forceEquip, turnOnlyItems), $item`Lil' Doctor™ bag`];
-      } else if (!getPropertyBoolean("_firedJokestersGun")) {
+      } else if (!getPropertyBoolean("_firedJokestersGun") && have($item`The Jokester's gun`)) {
         this.forceEquip = [...exclude(this.forceEquip, turnOnlyItems), $item`The Jokester's gun`];
       } else if (!getPropertyBoolean("_missileLauncherUsed")) {
         this.forceEquip = exclude(this.forceEquip, turnOnlyItems);
         fillAsdonMartinTo(100);
       }
     }
+    if (myClass() === $class`Grey Goo` && this.location === $location`Hobopolis Town Square`) {
+      this.forceEquip = [...exclude(this.forceEquip, turnOnlyItems), $item`Space Tourist Phaser`];
+    }
+
+    // only try to equip items we have
+    this.forceEquip = this.forceEquip.filter((x) => have(x));
 
     maximizeCached(
       renderObjective(
@@ -503,24 +533,10 @@ export class AdventuringManager {
       }
     }
 
-    // TODO: Check SR.
-    if (
-      this.location !== $location`The Purple Light District` &&
-      getImagePld() === 10 &&
-      inSemirareWindow() &&
-      AdventuringManager.lastSemirareCheck < myTurncount()
-    ) {
-      setChoice(205, 2);
-      setChoice(294, 1);
-      takeCloset(100, $item`hobo nickel`);
-      adv1($location`The Purple Light District`, -1, "");
-      putCloset(itemAmount($item`hobo nickel`), $item`hobo nickel`);
-      AdventuringManager.lastSemirareCheck = myTurncount();
-    }
-
     while (
       get("_universeCalculated") < get("skillLevel144") &&
-      reverseNumberology()[69] !== undefined
+      reverseNumberology()[69] !== undefined &&
+      have($skill`Calculate the Universe`)
     ) {
       cliExecute("numberology 69");
     }

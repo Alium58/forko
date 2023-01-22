@@ -1,17 +1,23 @@
 import {
   adv1,
   choiceFollowsFight,
+  Effect,
+  Familiar,
   getCampground,
   getCounters,
   getFuel,
   getProperty,
+  getWorkshed,
   haveEffect,
   haveEquipped,
   haveFamiliar,
   haveSkill,
   inebrietyLimit,
   inMultiFight,
+  Item,
   itemAmount,
+  Location,
+  Monster,
   myFamiliar,
   myInebriety,
   myMp,
@@ -20,11 +26,22 @@ import {
   runaway,
   runCombat,
   setProperty,
+  Skill,
   toInt,
+  use,
   useSkill,
   visitUrl,
 } from "kolmafia";
-import { $effect, $familiar, $item, $items, $monster, $skill, Macro as LibramMacro } from "libram";
+import {
+  $effect,
+  $familiar,
+  $item,
+  $items,
+  $monster,
+  $skill,
+  have,
+  Macro as LibramMacro,
+} from "libram";
 import {
   getPropertyBoolean,
   getPropertyInt,
@@ -79,7 +96,7 @@ export class Macro extends LibramMacro {
         !turboMode(),
         Macro.while_(
           `!monstername normal hobo && !hpbelow 500 && monsterhpabove ${maxDamage} && !match "some of it is even intact"`,
-          Macro.skill($skill`Candyblast`)
+          Macro.trySkill($skill`Candyblast`)
         )
       );
   }
@@ -89,25 +106,27 @@ export class Macro extends LibramMacro {
   }
 
   stasis() {
-    return this.externalIf(myInebriety() > inebrietyLimit(), "attack")
-      .externalIf(
-        myFamiliar() === $familiar`Stocking Mimic`,
-        Macro.if_(
-          "!hpbelow 500",
-          Macro.skill($skill`Curse of Weaksauce`).skill($skill`Micrometeorite`)
+    return (
+      this.externalIf(myInebriety() > inebrietyLimit(), "attack")
+        .externalIf(
+          myFamiliar() === $familiar`Stocking Mimic`,
+          Macro.if_(
+            "!hpbelow 500",
+            Macro.trySkill($skill`Curse of Weaksauce`).trySkill($skill`Micrometeorite`)
+          )
         )
-      )
-      .externalIf(!turboMode(), Macro.skill($skill`Entangling Noodles`))
-      .collect()
-      .externalIf(
-        myFamiliar() === $familiar`Stocking Mimic`,
-        Macro.while_(
-          `!pastround 9 && !hpbelow 500 && (!monstername "normal hobo" || monsterhpabove ${
-            2 * myFamiliarWeight()
-          })`,
-          Macro.item($item`seal tooth`)
+        .externalIf(!turboMode(), Macro.trySkill($skill`Entangling Noodles`))
+        //.collect()
+        .externalIf(
+          myFamiliar() === $familiar`Stocking Mimic`,
+          Macro.while_(
+            `!pastround 9 && !hpbelow 500 && (!monstername "normal hobo" || monsterhpabove ${
+              2 * myFamiliarWeight()
+            })`,
+            Macro.item($item`seal tooth`)
+          )
         )
-      );
+    );
   }
 
   static stasis() {
@@ -120,13 +139,18 @@ export class Macro extends LibramMacro {
 
   kill() {
     return this.externalIf(myInebriety() > inebrietyLimit(), "attack")
-      .if_("monstername sleaze hobo", Macro.skill($skill`Saucegeyser`).repeat())
+      .if_(
+        "monstername sleaze hobo",
+        Macro.trySkill($skill`Saucegeyser`)
+          .attack()
+          .repeat()
+      )
       .externalIf(
-        getPropertyInt("_shatteringPunchUsed") < 3,
+        getPropertyInt("_shatteringPunchUsed") < 3 && have($skill`Shattering Punch`),
         Macro.if_(Macro.nonFree(), Macro.skill($skill`Shattering Punch`))
       )
       .externalIf(
-        !getPropertyBoolean("_gingerbreadMobHitUsed"),
+        !getPropertyBoolean("_gingerbreadMobHitUsed") && have($skill`Gingerbread Mob Hit`),
         Macro.if_(Macro.nonFree(), Macro.skill($skill`Gingerbread Mob Hit`))
       )
       .externalIf(
@@ -139,22 +163,22 @@ export class Macro extends LibramMacro {
       )
       .externalIf(
         !getPropertyBoolean("_missileLauncherUsed") &&
-          getCampground()["Asdon Martin keyfob"] !== undefined &&
+          getWorkshed() === $item`Asdon Martin keyfob` &&
           getFuel() >= 100,
         Macro.if_(Macro.nonFree(), Macro.skill($skill`Asdon Martin: Missile Launcher`))
       )
       .externalIf(
-        !turboMode(),
+        !turboMode() && have($skill`Candyblast`),
         Macro.while_(
           '!hpbelow 500 && !match "some of it is even intact"',
           Macro.skill($skill`Candyblast`)
         )
       )
-      .skill($skill`Lunging Thrust-Smack`)
-      .skill($skill`Lunging Thrust-Smack`)
+      .trySkill($skill`Lunging Thrust-Smack`)
+      .trySkill($skill`Lunging Thrust-Smack`)
       .if_("monstername spooky hobo", Macro.skill($skill`Lunging Thrust-Smack`).repeat())
-      .skill($skill`Stuffed Mortar Shell`)
-      .skill($skill`Saucegeyser`)
+      .trySkill($skill`Stuffed Mortar Shell`)
+      .trySkill($skill`Saucegeyser`)
       .attack()
       .repeat();
   }
@@ -249,7 +273,6 @@ export function main(initialRound: number, foe: Monster) {
     if (foe.attributes.includes("FREE")) {
       killMacro.submit();
     } else {
-      if (preMacro.toString().length > 0) preMacro.submit();
       if (
         myFamiliar() === Familiar.get("Frumious Bandersnatch") &&
         haveEffect(Effect.get("Ode to Booze")) > 0 &&
@@ -281,11 +304,19 @@ export function main(initialRound: number, foe: Monster) {
         getPropertyInt("_snokebombUsed") < 3
       ) {
         useSkill(1, Skill.get("Snokebomb"));
-      } else if (freeRunItems.some((item: Item) => itemAmount(item) > 0)) {
+      } else if (
+        freeRunItems.some((item: Item) => itemAmount(item) > 0) &&
+        getPropertyBoolean(`minehobo_useFreeRunItems`)
+      ) {
+        print(
+          `Going to use free run item: ${freeRunItems.find((item: Item) => itemAmount(item) > 0)}`,
+          "red"
+        );
         Macro.item(freeRunItems.find((item: Item) => itemAmount(item) > 0) as Item)
           .repeat()
           .submit();
-      } else {
+      } else if (preMacro.toString().length > 0) preMacro.submit();
+      else {
         // non-free, whatever
         throw "Couldn't find a way to run away for free!";
       }
@@ -343,7 +374,7 @@ export function adventureRunOrStasis(loc: Location, freeRun: boolean) {
   if (freeRun) {
     adventureRunUnlessFree(
       loc,
-      myFamiliar() === $familiar`Stocking Mimic` ? Macro.stasis() : Macro.collect(),
+      myFamiliar() === $familiar`Stocking Mimic` ? Macro.stasis() : Macro.stasis().kill(),
       Macro.stasis().kill()
     );
   } else {
@@ -363,4 +394,7 @@ export function adventureMacroAuto(
   nextMacro = nextMacro ?? Macro.abort();
   autoMacro.setAutoAttack();
   adventureMacro(loc, nextMacro);
+}
+function useItem(arg0: any, arg1: number) {
+  throw new Error("Function not implemented.");
 }

@@ -1,9 +1,10 @@
 import { lastChoice, print, setAutoAttack, visitUrl } from "kolmafia";
 import { $location } from "libram";
-import { AdventuringManager, PrimaryGoal, usualDropItems } from "./adventure";
-import { adventureMacroAuto, adventureRunOrStasis, Macro } from "./combat";
+import { AdventuringManager, PrimaryGoal, usualDropItems } from "../adventure";
+import { adventureMacroAuto, adventureRunOrStasis, Macro } from "../combat";
 import { getState as getEeState } from "./ee";
 import {
+  everyTurnFunction,
   extractInt,
   getImagePld,
   lastWasCombat,
@@ -12,8 +13,8 @@ import {
   setChoice,
   stopAt,
   wrapMain,
-} from "./lib";
-import { expectedTurns, moodPlusCombat } from "./mood";
+} from "../lib";
+import { expectedTurns, moodPlusCombat } from "../mood";
 
 const FREE_RUN_PLD = true;
 
@@ -48,9 +49,10 @@ export function doPld(stopTurncount: number) {
   let state = getPldState();
   const diverts = getEeState().diverts;
   while (!mustStop(stopTurncount)) {
+    everyTurnFunction();
     const maxFights = FREE_RUN_PLD ? 34 : 25;
     const tryFreeRun = state.fights < maxFights;
-    setChoice(223, diverts + state.flimflams < 21 ? 3 : 1);
+    setChoice(223, diverts + state.flimflams < 21 || getImagePld() >= 9 ? 3 : 1);
     setChoice(224, tryFreeRun ? 2 : 1);
 
     const turnsEstimate = Math.max(0, maxFights - state.fights) + Math.max(0, 18 - state.kills);

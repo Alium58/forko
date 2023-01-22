@@ -2,7 +2,7 @@ import { getClanName, print } from "kolmafia";
 import { $location } from "libram";
 import { AdventuringManager, PrimaryGoal } from "./adventure";
 import { adventureRunOrStasis } from "./combat";
-import { setChoice, wrapMain } from "./lib";
+import { everyTurnFunction, setChoice, wrapMain } from "./lib";
 import { moodAddItem, moodMinusCombat } from "./mood";
 import { getSewersState, sewerAccess, throughSewers } from "./sewers";
 import { setClan } from "./wl";
@@ -19,6 +19,7 @@ export function main(args: string | undefined) {
 
     let state = getSewersState();
     while (state.grates < 20 || state.valves < 20) {
+      everyTurnFunction();
       if (state.valves < 20) setChoice(197, 3); // Open valves.
       if (state.grates < 20) setChoice(198, 3); // Open grates.
 

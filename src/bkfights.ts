@@ -6,6 +6,7 @@ import {
   getCampground,
   getClanName,
   getCounters,
+  getWorkshed,
   handlingChoice,
   itemAmount,
   mallPrice,
@@ -94,7 +95,7 @@ set("hpAutoRecoveryTarget", 0.95);
 
 useFamiliar($familiar`Unspeakachu`);
 equip($slot`weapon`, $item`Fourth of May Cosplay Saber`);
-equip($slot`pants`, $item`pantogram pants`);
+//equip($slot`pants`, $item`pantogram pants`);
 equip($slot`acc1`, $item`lucky gold ring`);
 equip($slot`acc2`, $item`Mr. Cheeng's spectacles`);
 // equip($slot`acc3`, $item`Belt of Loathing`);
@@ -252,7 +253,7 @@ while (!get("_gingerbreadMobHitUsed") || get("_shatteringPunchUsed") < 3) {
   withMacro(
     Macro.tentacle()
       .trySkill($skill`Gingerbread Mob Hit`)
-      .skill($skill`Shattering Punch`)
+      .trySkill($skill`Shattering Punch`)
       .abort(),
     () => use($item`drum machine`)
   );
@@ -294,7 +295,7 @@ if (get("_powderedMadnessUses") < 5 && mallPrice($item`powdered madness`) < 4000
 }
 
 // 25	1	0	0	Asdon Martin: Missile Launcher	combat skill	must have Asdon Martin installed in your workshed; instantly forces all items to drop; costs 100 "fuel"
-if (getCampground()["Asdon Martin keyfob"] !== undefined && !get("_missileLauncherUsed")) {
+if (getWorkshed() === $item`Asdon Martin keyfob` && !get("_missileLauncherUsed")) {
   fillAsdonMartinTo(100);
   withMacro(Macro.tentacle().skill($skill`Missile Launcher`), () => use($item`drum machine`));
 }

@@ -10,21 +10,23 @@ import {
   visitUrl,
 } from "kolmafia";
 import { $location } from "libram";
-import { AdventuringManager, PrimaryGoal, usualDropItems } from "./adventure";
-import { adventureMacroAuto, Macro } from "./combat";
+import { AdventuringManager, PrimaryGoal, usualDropItems } from "../adventure";
+import { adventureMacroAuto, Macro } from "../combat";
 import {
   clamp,
+  everyTurnFunction,
   extractInt,
   getChoice,
   getImage,
+  getImageBb,
   getImageEe,
   lastWasCombat,
   mustStop,
   setChoice,
   stopAt,
   wrapMain,
-} from "./lib";
-import { expectedTurns, moodBaseline, moodMinusCombat } from "./mood";
+} from "../lib";
+import { expectedTurns, moodBaseline, moodMinusCombat } from "../mood";
 
 // Formatted like clanid:ascension;clanid:ascension
 function clanYodelAscensions() {
@@ -112,6 +114,7 @@ export function doEe(stopTurncount: number, pass: number) {
     // First pass: Go until we get to icicle + diverts.
     // Second pass: Go until yodeling.
     // Third pass: Go until done, unless image < 9.
+    // Fourth pass: Finish EE
     while (
       ((pass === 1 &&
         (state.icicles < ICICLE_COUNT || state.diverts + state.flimflams < DIVERT_COUNT) &&
@@ -121,18 +124,22 @@ export function doEe(stopTurncount: number, pass: number) {
         pass === 4) &&
       !mustStop(stopTurncount)
     ) {
-      if (
+      everyTurnFunction();
+      if (getImageBb() > 8 && state.diverts < DIVERT_COUNT) {
+        // We've done enough BB that can't make more icicles. Divert if still needed
+        setChoice(215, 2);
+      } else if (
         state.icicles >= ICICLE_COUNT &&
         (state.diverts >= DIVERT_COUNT || state.flimflams + state.diverts >= 21)
       ) {
         // We've done enough BB that making icicles lets us skip an adventure to find yodeling.
         setChoice(215, 3);
       } else {
-        // Make icicles or, if we're done, divert.
+        // If done making icicles, divert
         setChoice(215, state.icicles >= ICICLE_COUNT ? 2 : 3);
       }
-      // Yodel heart out if we're done with icicles.
-      setChoice(217, state.icicles >= ICICLE_COUNT ? 3 : 1);
+      // Yodel heart out if we're done with icicles or can't make more
+      setChoice(217, state.icicles >= ICICLE_COUNT || getImageBb() > 8 ? 3 : 1);
 
       const needMinusCombat =
         !yodeled || state.icicles < ICICLE_COUNT || state.flimflams + state.diverts < 21;

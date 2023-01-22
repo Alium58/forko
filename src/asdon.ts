@@ -1,6 +1,8 @@
 import {
   abort,
+  getCampground,
   getFuel,
+  getWorkshed,
   historicalPrice,
   isNpcItem,
   mallPrice,
@@ -8,7 +10,7 @@ import {
   toInt,
   visitUrl,
 } from "kolmafia";
-import { $items } from "libram";
+import { $item, $items } from "libram";
 
 const fuelBlacklist = $items`cup of "tea", thermos of "whiskey", Lucky Lindy, Bee's Knees, Sockdollager, Ish Kabibble, Hot Socks, Phonus Balonus, Flivver, Sloppy Jalopy, glass of "milk"`;
 
@@ -60,6 +62,7 @@ function insertFuel(it: Item, quantity = 1) {
 }
 
 export function fillAsdonMartinTo(targetUnits: number) {
+  if (getWorkshed() !== $item`Asdon Martin keyfob`) return;
   while (getFuel() < targetUnits) {
     const remaining = targetUnits - getFuel();
 
@@ -75,5 +78,6 @@ export function fillAsdonMartinTo(targetUnits: number) {
 }
 
 export function main(args: string) {
+  if (getWorkshed() !== $item`Asdon Martin keyfob`) return;
   fillAsdonMartinTo(args.trim().match(/^[0-9]+$/) ? parseInt(args, 10) : 37);
 }

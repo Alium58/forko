@@ -9,10 +9,11 @@ import {
   visitUrl,
 } from "kolmafia";
 import { $familiar, $location, $monster, $skill } from "libram";
-import { AdventuringManager, PrimaryGoal, usualDropItems } from "./adventure";
-import { adventureMacroAuto, adventureRunOrStasis, Macro } from "./combat";
+import { AdventuringManager, PrimaryGoal, usualDropItems } from "../adventure";
+import { adventureMacroAuto, adventureRunOrStasis, Macro } from "../combat";
 import {
   clamp,
+  everyTurnFunction,
   extractInt,
   getImageHeap,
   getPropertyInt,
@@ -23,8 +24,8 @@ import {
   setPropertyInt,
   stopAt,
   wrapMain,
-} from "./lib";
-import { expectedTurns, moodMinusCombat } from "./mood";
+} from "../lib";
+import { expectedTurns, moodMinusCombat } from "../mood";
 
 class HeapState {
   defeated = 0;
@@ -64,6 +65,7 @@ export function doHeap(stopTurncount: number) {
       `NCS until we compost: ${getPropertyInt("minehobo_heapNcsUntilCompost", 0)}`,
       `Image (approx): ${getImageHeap()}`
     );
+    everyTurnFunction();
 
     setChoice(216, getPropertyInt("minehobo_heapNcsUntilCompost", 0) <= 0 ? 1 : 2);
 
